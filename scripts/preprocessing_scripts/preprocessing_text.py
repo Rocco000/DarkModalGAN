@@ -345,17 +345,17 @@ def expand_unit_measurement_acronyms(text: str) -> str:
     """
     # Dictionary to map acronyms to full words
     unit_measurement_mapping = {
-        r"(\d+(\.\d+)?)\s*(mcg|μg|ug)(?=\W+)": r"\1 micrograms",
-        r"(\d+(\.\d+)?)\s*mg(?=\W+)": r"\1 milligrams",
-        r"(\d+(\.\d+)?)\s*(grs?|g)(?=\W+)": r"\1 grams", # catch 100gr and 100g
-        r"(\d+(\.\d+)?)\s*kg(?=\W+)": r"\1 kilograms",
-        r"(\d+(\.\d+)?)\s*(lb|lbs)(?=\W+)": r"\1 pounds",
-        r"(\d+(\.\d+)?)\s*oz(?=\W+)": r"\1 ounces",
-        r"(\d+(\.\d+)?)\s*l(?=\W+)": r"\1 liters",
-        r"(\d+(\.\d+)?)\s*(ml|cc)(?=\W+)": r"\1 milliliters",
-        r"(\d+(\.\d+)?)\s*iu(?=\W+)": r"\1 international unit",
-        r"(\d+(\.\d+)?)\s*(?:inc|inch)(?=\W+)": r"\1 inches",
-        r"(\d+/\d+)\s*(?:inc|inch)(?=\W+)": r"\1 inches",
+        r"(\d+(\.\d+)?)\s*(mcg|μg|ug)(?=\W|$)": r"\1 micrograms",
+        r"(\d+(\.\d+)?)\s*mg(?=\W|$)": r"\1 milligrams",
+        r"(\d+(\.\d+)?)\s*(grs?|g)(?=\W|$)": r"\1 grams", # catch 100gr and 100g
+        r"(\d+(\.\d+)?)\s*kg(?=\W|$)": r"\1 kilograms",
+        r"(\d+(\.\d+)?)\s*(lb|lbs)(?=\W|$)": r"\1 pounds",
+        r"(\d+(\.\d+)?)\s*oz(?=\W|$)": r"\1 ounces",
+        r"(\d+(\.\d+)?)\s*l(?=\W|$)": r"\1 liters",
+        r"(\d+(\.\d+)?)\s*(ml|cc)(?=\W|$)": r"\1 milliliters",
+        r"(\d+(\.\d+)?)\s*iu(?=\W|$)": r"\1 international unit",
+        r"(\d+(\.\d+)?)\s*(?:inc|inch)(?=\W|$)": r"\1 inches",
+        r"(\d+/\d+)\s*(?:inc|inch)(?=\W|$)": r"\1 inches",
     }
     for acronym, full_word in unit_measurement_mapping.items():
         text = re.sub(acronym, full_word, text)
@@ -400,7 +400,7 @@ def expand_drug_acronym(text: str) -> str:
         r"(?<!iso-)lsd": "lysergic acid diethylamide",
         r"iso-lsd": "isolysergic acid diethylamide",
         r"(mu)?shrooms?": "mushroom",
-        r"\W+m\s*hrooms?": " mushroom",
+        r"(?:\W|^)m\s*hrooms?": " mushroom",
         r"3-mmc": "metaphedrone",
         r"4-mmc": "mephedrone",
         r"2c-b": "nexus", #4-bromo-2.5-dimethoxyphenethylamine
@@ -436,7 +436,7 @@ def expand_drug_acronym(text: str) -> str:
     }
 
     for acronym, full_name in acronym_mapping.items():
-        text = re.sub(acronym+r"(?=\W+)", full_name, text)
+        text = re.sub(acronym+r"(?=\W|$)", full_name, text)
     
     return text
 
@@ -457,7 +457,7 @@ def replace_quantity_annotation(text: str) -> str:
     }
 
     for acronym, full_word in unit_mapping.items():
-        text = re.sub(acronym+r"(?=\W+)", full_word, text)
+        text = re.sub(acronym+r"(?=\W|$)", full_word, text)
 
     # List of product words that indicate units
     product_units = r"(pills|tablets|capsules|vials|blister|bottles|ampoules)"
@@ -493,7 +493,7 @@ def replace_quantity_annotation(text: str) -> str:
         else:
             return f"{amount1} pieces of {amount2}.{decimal2} {unit_mesurement}"
 
-    text = re.sub(r"(\d+)\s*x\s*((\d+)(\.\d+)?\s*(μg|ug|mg|gr|g|kg|lb|lbs|oz|l|ml))?(?=\W+)", replace_quantity2, text)
+    text = re.sub(r"(\d+)\s*x\s*((\d+)(\.\d+)?\s*(μg|ug|mg|gr|g|kg|lb|lbs|oz|l|ml))?(?=\W|$)", replace_quantity2, text)
     
     # Replace patterns like "X100", "X50"
     matches = re.finditer(r"\bx\s*(\d+)(?=\W+)", text)
@@ -515,7 +515,7 @@ def replace_quantity_annotation(text: str) -> str:
     text = re.sub(rf"\d+\s*{product_units}\s*-+\s*\d+\s*{product_units}", "", text) 
 
     # Remove quantity range like "10pcs - 20pcs", "5x - 5000x", "5 - 5000x", "5 - 5000pcs", "5 - 50", "5pcs - 10", "5x -10"
-    text = re.sub(r"(\d+)\s*(pcs?|x)?\s*-+\s*(\d+)\s*(pcs?|x)?(?=\W+)", "", text) 
+    text = re.sub(r"(\d+)\s*(pcs?|x)?\s*-+\s*(\d+)\s*(pcs?|x)?(?=\W|$)", "", text) 
 
     # Remove noisy patterns like "10x x10"
     text = re.sub(r"\b(\d+)x\s*x(\d+)\b", "", text)
@@ -542,7 +542,7 @@ def remove_price(text: str) -> str:
     text = re.sub(r"\d+(\.\d+)?\s*[$€£]", " ", text)
 
     # Remove patterns like "$10", "€10", "£10"
-    text = re.sub(r"[$€£]\s*\d+(\.\d+)?(?=\W+)", " ", text)
+    text = re.sub(r"[$€£]\s*\d+(\.\d+)?(?=\W|$)", " ", text)
 
     # Remove patterns like "10 euros", "10 dollars"
     text = re.sub(r"\d+(\.\d+)?\s*(euro|dollar)s?", " ", text)
@@ -609,7 +609,7 @@ def remove_shipping_info(text: str, country_list: list):
 
     acronym_patterns = re.compile(
         r"\W*(from)?(?:" + "|".join(map(re.escape, country_acronym_list)) +
-        r")(?:\s*to\s*|\s*->\s*|[-\s]*)(?:" + "|".join(map(re.escape, country_acronym_list)) + r")?(?=\W*)"
+        r")(?:\s*to\s*|\s*->\s*|[-\s]*)(?:" + "|".join(map(re.escape, country_acronym_list)) + r")?(?=\W|$)"
     )
     text = acronym_patterns.sub(" ", text)
 
@@ -880,4 +880,4 @@ def main_preprocessing_text_data(data: pd.DataFrame, save_path:Path, country_lis
 
     split_dataset(data_copy, 510, save_path) # 512 - 2  to include special tokens such as CLS and SEP
 
-    return data_copy    
+    return data_copy
