@@ -6,10 +6,12 @@ import matplotlib.pyplot as plt
 from scipy.stats import skew, kurtosis
 import seaborn as sns
 import numpy as np
+import json
 
 def convert_price(data: pd.DataFrame) -> pd.DataFrame:
     """
     Convert all prices to American Dollar (USD) based on predefined exchange rates.
+
     :param data: a DataFrame containing product information
     :return: a DataFrame with all prices in american dollar.
     """
@@ -40,6 +42,7 @@ def convert_price(data: pd.DataFrame) -> pd.DataFrame:
 def convert_price_in_crypto(data: pd.DataFrame) -> pd.DataFrame:
     """
     Convert prices to Monero (XMR) for rows that don't have a cryptocurrency value.
+
     :param data: a DataFrame containing product information
     :return: a DataFrame without NaN or empty value for crypto_price column.
     """
@@ -68,7 +71,8 @@ def convert_price_in_crypto(data: pd.DataFrame) -> pd.DataFrame:
 
 def currency_info(data: pd.DataFrame) -> None:
     """
-    Calculate the most frequent currency in the given DataFrame and counts the number of instance per currency and cryptocurrency
+    Calculate the most frequent currency in the given DataFrame and counts the number of instance per currency and cryptocurrency.
+
     :param data: a DataFrame containing product information
     """
     currency_list = data["currency"].unique()
@@ -87,7 +91,8 @@ def currency_info(data: pd.DataFrame) -> None:
 
 def fix_country(country: str) -> str:
     """
-    Remove redundant information from the given string
+    Remove redundant information from the given string.
+
     :param country: the country in the origin or destination field in the dataset.
     :return: a cleaned-up string without the redundant information.
     """
@@ -108,6 +113,7 @@ def fix_country(country: str) -> str:
 def fix_cocorico_origin_destination(data: pd.DataFrame) -> pd.DataFrame:
     """
     Fix the origin and destination fields for rows which have Cocorico as marketplace.
+
     :param data: a DataFrame containing product information
     :return: a DataFrame with fixed value for origin and destination fields.
     """
@@ -122,7 +128,8 @@ def fix_cocorico_origin_destination(data: pd.DataFrame) -> pd.DataFrame:
 
 def fix_drughub_destination(data: pd.DataFrame) -> pd.DataFrame:
     """
-    Fix the destination fields for rows which has DrugHub as marketplace. Specifically, substitute the destination 'Digital item or service' with 'World Wide'
+    Fix the destination fields for rows which has DrugHub as marketplace. Specifically, substitute the destination 'Digital item or service' with 'World Wide'.
+
     :param data: a DataFrame containing product information.
     :return: a DataFrame with fixed value for origin and destination fields.
     """
@@ -135,6 +142,7 @@ def fix_drughub_destination(data: pd.DataFrame) -> pd.DataFrame:
 def distribution_analysis(data:pd.DataFrame, column_name:str, save_path:Path) -> None:
     """
     Calculate and plot skewness, kurtosis, and descriptive statistics for a given column.
+
     :param data: a DataFrame containing the product information.
     :param column_name: the column name.
     :param save_path: a folder path in which plots will be stored.
@@ -212,6 +220,7 @@ def distribution_analysis(data:pd.DataFrame, column_name:str, save_path:Path) ->
 def label_encoding(label:str) -> int:
     """
     Apply the label encoding. Transform macro-category field in integer.
+
     :param label: the product label, namely the macro-category.
     :return: encoded label.
     """
@@ -230,11 +239,13 @@ def label_encoding(label:str) -> int:
     else:
         raise ValueError(f"{label} doesn't exist in the mapping!")
 
-def one_hot_encoding(data:pd.DataFrame, column_name:str) -> pd.DataFrame:
+def one_hot_encoding(data:pd.DataFrame, column_name:str, save_path:Path) -> pd.DataFrame:
     """
-    Apply the one-hot encoding on the input column.
+    Apply the one-hot encoding on the input column and store the mapping in save_path.
+
     :param data: a DataFrame containing the crawled data.
     :param column_name: the column name on which apply the one-hot encoding.
+    :param save_path: a path to store the one-hot encoding mapping.
     :return: the modified DataFrame with column_name encoded.
     """
     if column_name not in data.columns:
@@ -248,12 +259,23 @@ def one_hot_encoding(data:pd.DataFrame, column_name:str) -> pd.DataFrame:
     # Replace the original column with one-hot encoded vectors
     data[column_name] = data[column_name].apply(lambda x: [1 if i == one_hot_map[x] else 0 for i in range(len(unique_values))])
 
+    # Store the mapping between categorical values and one-hot encoded vectors
+    one_hot_vector_map = {
+        val: [1 if i == idx else 0 for i in range(len(unique_values))] for val, idx in one_hot_map.items()
+    }
+
+    # Store the mapping
+    with open(save_path.joinpath(f"{column_name}_mapping.json"), "w") as file:
+        json.dump(one_hot_vector_map, file)
+
     return data
 
 def main_preprocessing_tabular_data(data: pd.DataFrame, save_path:Path) -> pd.DataFrame:
     """
     The main function to preprocess the tabular data.
+    
     :param data: a DataFrame containing the crawled data.
+    :param save_path: a path to store the analysis.
     :return: a preprocessed DataFrame.
     """
     print("------------Preprocessing tabular data------------")
@@ -280,8 +302,8 @@ def main_preprocessing_tabular_data(data: pd.DataFrame, save_path:Path) -> pd.Da
 
     # Feature encoding
     print("One-hot encoding for categorical data...")
-    data_copy = one_hot_encoding(data_copy, "micro_category")
-    data_copy = one_hot_encoding(data_copy, "origin")
-    data_copy = one_hot_encoding(data_copy, "destination")
+    data_copy = one_hot_encoding(data_copy, "micro_category", save_path)
+    data_copy = one_hot_encoding(data_copy, "origin", save_path)
+    data_copy = one_hot_encoding(data_copy, "destination", save_path)
 
     return data_copy
