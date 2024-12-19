@@ -1,0 +1,67 @@
+Your role is to preprocess text data from a CSV file for training a machine learning model. The data pertains to drugs sold on dark marketplaces. Expand the `full_text` field to approximately 450 tokens using **your native tokenizer** to align with the target length of 510 tokens in the `Hugging Face BertTokenizer`. Follow these guidelines:
+
+1. **Objective**:
+   - For each row in the CSV, expand the `full_text` field to ensure its token length approximates 510 tokens as measured by the `BertTokenizer` from Hugging Face's `transformers` library. Since you do not have access to BertTokenizer, use **your native tokenizer** to approximate this constraint. Aim for **approximately 450 tokens in your tokenizer** to match the target length.
+
+2. **Input Format**:
+   - The input will be provided as a CSV file with the following fields:
+     - `image_path`: The file path to the corresponding image.
+     - `title`: The product title.
+     - `description`: The product description.
+     - `full_text`: The concatenation of `title + ". " + description`.
+     - `token_length`: The token length of `full_text` (precomputed).
+
+3. **Information to Remove**:
+   - Exclude the following types of information from the `full_text` field:
+     - Shipping information (e.g., delivery times, regions served).
+     - Feedback information (e.g., customer reviews, ratings, or testimonials).
+     - Customer support details (e.g., contact information, guarantees, return policies).
+     - Refund information (e.g., refund terms, processes).
+     - Pricing details (e.g., costs, discounts, cryptocurrency prices).
+
+4. **Information to Add**:
+   - Include relevant and descriptive information about:
+     - **Product appearance** (e.g., color, texture, size, or form).
+     - **How to consume or use the product** (e.g., preparation, ingestion method, or application).
+     - **Product effect duration** (e.g., onset time, how long the effects typically last).
+
+5. **Domain-Specific Terms**:
+   - Retain all domain-specific terms provided in the following list to maintain domain relevance:
+     - [cannabidiol, cannabidiolic acid, cannabidivarin, cannabigerol, cannabinol, concentrate, ak47, shake, tetrahydrocannabinol, tetrahydrocannabinolic acid, rick simpson oil, nandrolone phenylpropionate, trenbolone, boldenone, turinabol, dihydrotestosterone, ligandrol, nutrobal, ostarine, human chorionic gonadotropin, human growth hormone, clostebol, nandrolone, androstenedione, dimethyltryptamine, lysergic acid diethylamide, isolysergic acid diethylamide, metaphedrone, mephedrone, nexus, psilacetin, mebufotenin, psilocin, methylenedioxymethamphetamine, amphetamine, methamphetamine, oxycontin, oxycodone, acetylcysteine, k8, rp15, tramadol, roxycodone, nervigesic, pregabalin, carisoprodol, alprazolam, xanax, anavar, benzodiazepine, cocaine, clenbuterol, benzocaine, clomiphene, crack, marijuana, hashish, nbome, hydroxycontin chloride, ketamine, heroin, adderall, sativa, indica, cookie, mushroom, dihydrocodeine, psilocybin]
+
+6. **Diversity of Expansions**:
+   - For rows with similar input content, generate diverse expansions by:
+   - Using varied sentence structures.
+   - Adding different descriptive details for the same type of information.
+   - Incorporating alternative synonyms and phrasing where appropriate.
+   - Emphasizing different aspects of the product (e.g., effects vs. appearance) in different expansions.
+
+6. **Output Requirements**:
+   - Return the updated CSV file with the `full_text` field expanded to approximately 450 tokens in your tokenizer, which aligns with 510 tokens in BertTokenizer.
+
+7. **Output Format**:
+   - Return the CSV file with the same fields, but with the `full_text` field replaced by its expanded version.
+
+### Example Input (CSV):
+| image_path              | title                  | description                        | full_text                                                      | token_length |
+|-------------------------|------------------------|------------------------------------|----------------------------------------------------------------|--------------|
+| cannabis/cannabis10.jpg | 20 gram gelato 41 top indoor | very good qual y | 20 gram gelato 41 top indoor. very good qual y | 13 |
+
+### Example Output (CSV):
+| image_path              | title                  | description                        | full_text                                                      | token_length |
+|-------------------------|------------------------|------------------------------------|----------------------------------------------------------------|--------------|
+| cannabis/cannabis10.jpg | 20 gram gelato 41 top indoor | very good qual y | 20 gram of gelato 41 is a top tier indoor strain known for its premium quality and exceptional characteristic. the product exhibit a vibrant appearance typically showcasing a rich mix of green with hint of purple coated in a layer of frosty trichomes that signify it potency. the texture is dense yet slightly sticky indicating it freshness and high resin content. gelato 41 is renowned for it aromatic profile which combines sweet dessert like notes with subtle undertones of earthy and citrus flavors making it a favorite among enthusiasts. to consume it can be prepared using traditional method such as rolling, vaping, or incorporating into other forms of smoking accessorie. for those preferring alternative consumption method it can also be used to create edible though this requires decarboxylation to activate the cannabinoid. user often report that the effect of gelato 41 set in quickly delivering a balanced mix of relaxation and euphoria. the effects typically last for a few hours making it ideal for both recreational and medicinal use. it quality ensure a consistently satisfying experience for connoisseurs seeking reliable indoor grown strain. | 510 |
+
+**Important Note**: 
+- Make expansions coherent and meaningful.
+- Maintain the tone and context of the original text.
+- For rows with similar input content, generate diverse expansions. So the extended part shouldn't be equal between different samples.
+- Even though you cannot calculate the exact token length with BertTokenizer in your environment, aim for approximately 450 tokens in your tokenizer to achieve the target length of 510 tokens in BertTokenizer.
+
+ok thank you a lot. now proceed with the next one.
+**Important Note**: 
+- Make expansions coherent and meaningful.
+- Maintain the tone and context of the original text.
+- For rows with similar input content, generate diverse expansions. So the extended part shouldn't be equal between different samples. It is crucial not to have an equal extended part! 
+- Even though you cannot calculate the exact token length with BertTokenizer in your environment, aim for approximately 450 tokens in your tokenizer to achieve the target length of 510 tokens in BertTokenizer. It is very important to reach 450 tokens length and not exceed too much this limit!
+- Don't add other columns. For each sample, replace the "full_text" value with the extended version and update "token_length field" with the new token length.
