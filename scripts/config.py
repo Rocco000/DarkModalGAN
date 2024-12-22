@@ -138,12 +138,8 @@ class Config:
         Returns the file path to the checkpoint file.
 
         :return: Path object representing the checkpoint file path.
-        :raises FileNotFoundError: If the checkpoint path does not exist.
         """
-        checkpoint_path = Path(self.config["checkpoint_path"])
-        if not checkpoint_path.exists():
-            raise FileNotFoundError(f"{checkpoint_path} doesn't exist")
-        return checkpoint_path
+        return Path(self.config["checkpoint_path"])
 
     def get_gen_weights(self, epoch:int) -> Path:
         """
