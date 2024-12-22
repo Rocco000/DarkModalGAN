@@ -132,6 +132,70 @@ class Config:
         reverse_micro_category_mapping = {tuple(v): k for k, v in micro_category_mapping.items()}
 
         return reverse_micro_category_mapping
+
+    def get_checkpoint_path(self) -> Path:
+        """
+        Returns the file path to the checkpoint file.
+
+        :return: Path object representing the checkpoint file path.
+        :raises FileNotFoundError: If the checkpoint path does not exist.
+        """
+        checkpoint_path = Path(self.config["checkpoint_path"])
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(f"{checkpoint_path} doesn't exist")
+        return checkpoint_path
+
+    def get_gen_weights(self, epoch:int) -> Path:
+        """
+        Returns the file path to the generator weigths for given epoch.
+
+        :param epoch: the epoch number at which the generator weights are saved.
+        :return: Path object representing the generator weights file path.
+        :raises FileNotFoundError: If the generator weights file does not exist for the given epoch.
+        """
+        gen_weights_path = Path(self.config["gen_path"]).joinpath(f"generator_weigths_{epoch}")
+        if not gen_weights_path.exists():
+            raise FileNotFoundError(f"{gen_weights_path} doesn't exist")
+        return gen_weights_path
+
+    def get_critic_weights(self, epoch:int) -> Path:
+        """
+        Returns the file path to the critic weigths for given epoch.
+
+        :param epoch: the epoch number at which the critic weights are saved.
+        :return: Path object representing the critic weights file path.
+        :raises FileNotFoundError: If the critic weights file does not exist for the given epoch.
+        """
+        critic_weights_path = Path(self.config["critic_path"]).joinpath(f"critic_weigths_{epoch}")
+        if not critic_weights_path.exists():
+            raise FileNotFoundError(f"{critic_weights_path} doesn't exist")
+        return critic_weights_path
+
+    def get_gen_opt_state(self, epoch:int) -> Path:
+        """
+        Returns the file path to the generator optimizer state for given epoch.
+
+        :param epoch: the epoch number at which the generator optimizer state is saved.
+        :return: Path object representing the generator optimizer state file path.
+        :raises FileNotFoundError: If the generator optimizer state file does not exist for the given epoch.
+        """
+        gen_opt_path = Path(self.config["gen_opt_path"]).joinpath(f"gen_optimizer_state_{epoch}")
+        if not gen_opt_path.exists():
+            raise FileNotFoundError(f"{gen_opt_path} doesn't exist")
+        return gen_opt_path
+
+    def get_critic_opt_state(self, epoch:int) -> Path:
+        """
+        Returns the file path to the critic optimizer state for given epoch.
+
+        :param epoch: the epoch number at which the critic optimizer state is saved.
+        :return: Path object representing the critic optimizer state file path.
+        :raises FileNotFoundError: If the critic optimizer state file does not exist for the given epoch.
+        """
+        critic_opt_path = Path(self.config["critic_opt_path"]).joinpath(f"critic_optimizer_state_{epoch}")
+        if not critic_opt_path.exists():
+            raise FileNotFoundError(f"{critic_opt_path} doesn't exist")
+        return critic_opt_path
     
     def get_writer_path_real(self) -> Path:
         writer_real = Path(self.config["writer_real"])
@@ -150,9 +214,6 @@ class Config:
             print(f"Created {writer_fake}")
 
         return writer_fake
-    
-    def get_dagshub_mail(self) -> str:
-        return self.config["mail"]
     
     def get_user_name(self) -> str:
         return self.config["user_name"]
