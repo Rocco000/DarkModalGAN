@@ -153,7 +153,7 @@ class Config:
         :return: Path object representing the generator weights file path.
         :raises FileNotFoundError: If the generator weights file does not exist for the given epoch.
         """
-        gen_weights_path = Path(self.config["gen_path"]).joinpath(f"generator_weigths_{epoch}")
+        gen_weights_path = Path(self.config["gen_path"]).joinpath(f"generator_weigths_{epoch}.pth")
         if not gen_weights_path.exists():
             raise FileNotFoundError(f"{gen_weights_path} doesn't exist")
         return gen_weights_path
@@ -166,7 +166,7 @@ class Config:
         :return: Path object representing the critic weights file path.
         :raises FileNotFoundError: If the critic weights file does not exist for the given epoch.
         """
-        critic_weights_path = Path(self.config["critic_path"]).joinpath(f"critic_weigths_{epoch}")
+        critic_weights_path = Path(self.config["critic_path"]).joinpath(f"critic_weigths_{epoch}.pth")
         if not critic_weights_path.exists():
             raise FileNotFoundError(f"{critic_weights_path} doesn't exist")
         return critic_weights_path
@@ -179,7 +179,7 @@ class Config:
         :return: Path object representing the generator optimizer state file path.
         :raises FileNotFoundError: If the generator optimizer state file does not exist for the given epoch.
         """
-        gen_opt_path = Path(self.config["gen_opt_path"]).joinpath(f"gen_optimizer_state_{epoch}")
+        gen_opt_path = Path(self.config["gen_opt_path"]).joinpath(f"gen_optimizer_state_{epoch}.pth")
         if not gen_opt_path.exists():
             raise FileNotFoundError(f"{gen_opt_path} doesn't exist")
         return gen_opt_path
@@ -192,7 +192,7 @@ class Config:
         :return: Path object representing the critic optimizer state file path.
         :raises FileNotFoundError: If the critic optimizer state file does not exist for the given epoch.
         """
-        critic_opt_path = Path(self.config["critic_opt_path"]).joinpath(f"critic_optimizer_state_{epoch}")
+        critic_opt_path = Path(self.config["critic_opt_path"]).joinpath(f"critic_optimizer_state_{epoch}.pth")
         if not critic_opt_path.exists():
             raise FileNotFoundError(f"{critic_opt_path} doesn't exist")
         return critic_opt_path
