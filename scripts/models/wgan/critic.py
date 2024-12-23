@@ -233,7 +233,7 @@ class Critic(nn.Module):
 
         # Extend the mask due to the label embedding
         extended_mask = torch.cat(
-            [torch.ones((mask.size(0), 1, 1), device=mask.device, dtype=mask.dtype), mask], dim=2
+            [torch.ones((mask.size(0), 1, 1, 1), device=mask.device, dtype=mask.dtype), mask], dim=2
         )
 
         assert extended_mask.size(2) == 513
