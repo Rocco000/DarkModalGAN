@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 import sys
 import os
 
@@ -41,6 +42,7 @@ class Generator(nn.Module):
         self.device = device
         self.img_size = img_size
         self.seq_len = seq_len
+        self.d_h = d_h
 
         # Label embedding layer
         self.label_embedding_layer = nn.Embedding(num_classes, label_embedding_size) # to add the sample class to the noisy z vector
@@ -205,11 +207,12 @@ class Generator(nn.Module):
         # Reshape the output image: (N, 3, 256, 256) --> (N, 3, self.img_size, self.img_size)
         return F.interpolate(x, size=(self.img_size, self.img_size), mode='bilinear', align_corners=False) 
     
-    def txt_forward(self, latent_vector):
+    def txt_forward(self, latent_vector, tau):
         """
         Generate text.
 
         :param latent_vector: the latent vector obtained from self.shared_latent_layer
+        :param tau: tau is the temperature parameter in Gumbel-Softmax function.
         :return: a list of token-IDs.
         """
         # Projecting latent vector in d_h dimension
@@ -222,40 +225,45 @@ class Generator(nn.Module):
         decoder_mask = causal_mask(x.size(1)).to(self.device)
 
         # List to store generated token-IDs at each step
-        predicted_tokens = list()
+        predicted_soft_embedding = list()
 
         for _ in range(self.seq_len):
-            # Get decoder output (hidden state)
+            # 1) Get decoder output (hidden state)
             decoder_output = self.decoder_only.generate_text(x, decoder_mask) # (N, seq_len, d_h)
 
-            # Project hidden state in the vocabulary space
+            # 2) Project hidden state in the vocabulary space
             decoder_projection = self.decoder_only.project(decoder_output) # (N, seq_len, vocab_size)
 
-            # Get last position in the sequence
+            # 3) Get last position in the sequence
             last_step_logits = decoder_projection[:, -1, :] # (N, vocab_size)
 
-            # Get the predicted token-ID per batch element. Token with highest probability
-            __, next_token = torch.max(last_step_logits, dim=-1) # (N,)
+            # 4) Apply Gumbel-Softmax
+            soft_token_dist = F.gumbel_softmax(last_step_logits, tau=tau, hard=False)  # (N, vocab_size)
 
-            # Add sequence dimension
-            next_token = next_token.unsqueeze(1) # (N, 1)
+            # 5) Convert the soft distribution to an embedding
+            token_embedding_matrix = self.token_embedding_layer.embedding.weight  # (vocab_size, d_h)
+
+            # Weighted sum: (N, vocab_size) x (vocab_size, d_h) -> (N, d_h)
+            soft_token_embedding = soft_token_dist @ token_embedding_matrix
+            soft_token_embedding = soft_token_embedding * math.sqrt(self.d_h) 
+            soft_token_embedding = soft_token_embedding.unsqueeze(1)  # (N, 1, d_h)
+
+            assert soft_token_embedding.size(1) == 1
+            assert soft_token_embedding.size(2) == 512
 
             # Store prediceted token
-            predicted_tokens.append(next_token)
+            predicted_soft_embedding.append(soft_token_embedding)
 
-            # Transform new token in its corresponding embedding (for each element in the batch)
-            token_embedding = self.token_embedding_layer(next_token) # (N, 1) --> (N, 1, d_h)
-
-            # Add new token to the sequence
-            x = torch.cat([x, token_embedding], dim=1) # Increases sequence length by 1
+            # 6) Add new token to the sequence
+            x = torch.cat([x, soft_token_embedding], dim=1) # Increases sequence length by 1
 
             # Update the casual mask
             decoder_mask = causal_mask(x.size(1)).to(self.device)
 
         # Concatenate all tokens along sequence dimension
-        predicted_tokens = torch.cat(predicted_tokens, dim=1) # (N, seq_len)
+        predicted_soft_embedding = torch.cat(predicted_soft_embedding, dim=1) # (N, seq_len, d_h)
 
-        return predicted_tokens
+        return predicted_soft_embedding
 
     def forward(self, z_vector, labels, tau):
         """
@@ -281,7 +289,7 @@ class Generator(nn.Module):
         img_output = self.img_forward(latent_vector) # (N, 3, self.img_size, self.img_size)
 
         # TEXT GENERATION
-        text_output = self.txt_forward(latent_vector) # (N, seq_len)
+        text_output = self.txt_forward(latent_vector, tau) # (N, seq_len, d_h)
 
         return img_output, text_output, origin, destination, micro_category, price, crypto_price
 
@@ -305,6 +313,7 @@ def test():
     assert img_output.size(3) == 224
 
     assert text_output.size(1) == 510
+    assert text_output.size(2) == 512
     
     assert origin.size(1) == 31
     assert destination.size(1) == 18
