@@ -75,9 +75,9 @@ class MultimodalDataset(Dataset):
             [
                 origin_info,
                 destination_info,
+                micro_category_info,
                 price_info,
-                crypto_price_info,
-                micro_category_info
+                crypto_price_info
             ],
             dim=0
         )
