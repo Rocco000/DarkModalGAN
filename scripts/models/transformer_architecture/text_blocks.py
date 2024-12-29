@@ -281,7 +281,7 @@ class ProjectionLayer(nn.Module):
         :return: the projection of the input x into vocabulary.
         """
         # Input: (batch, seq_len, d_h) --> (batch, seq_len, vocab_size)
-        return torch.log_softmax(self.proj(x), dim=-1) # FORSE DA TOGLIERE SOFTMAX PER LOSS
+        return self.proj(x)
     
 
 if __name__ == "__main__":
