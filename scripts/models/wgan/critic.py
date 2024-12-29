@@ -34,6 +34,7 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
 
         self.img_size = img_size
+        self.d_h = d_h
 
         # Embedding layer for labels.
         self.label_embedding_layer = nn.Embedding(num_classes, label_embedding_size)
@@ -219,7 +220,7 @@ class Critic(nn.Module):
         # Project label embedding in text embedding space
         txt_label_embedding = self.text_project(label_embedding) # (N, label_embedding_size) --> (N, d_h)
 
-        assert txt_label_embedding.size(1) == 512
+        assert txt_label_embedding.size(1) == self.d_h
 
         # Add the sequence dimension
         txt_label_embedding = txt_label_embedding.unsqueeze(1) # (N, d_h) --> (N, 1, d_h)
@@ -291,12 +292,12 @@ class Critic(nn.Module):
         # Get the corresponding CLS embedding which represents the entire input
         cls_embedding = text_output[:, 1, :]  # (N, d_h)
 
-        assert cls_embedding.size(1) == 512
+        assert cls_embedding.size(1) == self.d_h
 
         # CLASSIFICATION
         feature_vector = torch.cat([img_output, cls_embedding, tabular_output], dim=1)
 
-        assert feature_vector.size(1) == 1028
+        assert feature_vector.size(1) == 512+self.d_h+4
 
         return self.fusion_forward(feature_vector)
 
