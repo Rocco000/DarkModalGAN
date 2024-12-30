@@ -249,7 +249,7 @@ class Generator(nn.Module):
             # 4) Apply Gumbel-Softmax
             soft_token_dist = F.gumbel_softmax(last_step_logits, tau=tau, hard=False)  # (N, 1, vocab_size)
 
-            token_distributions.append(soft_token_dist) # (N, 1, vocab_size)
+            token_distributions.append(soft_token_dist[:4, :, :]) # (4, 1, vocab_size)
 
             # 5) Convert the soft distribution to an embedding
             token_embedding_matrix = self.token_embedding_layer.embedding.weight  # (vocab_size, d_h)
@@ -260,6 +260,8 @@ class Generator(nn.Module):
             soft_token_embedding = soft_token_embedding * math.sqrt(self.d_h) 
             soft_token_embedding = soft_token_embedding.unsqueeze(1)  # (N, 1, d_h)
 
+            del soft_token_dist, last_step_logits
+
             assert soft_token_embedding.size(1) == 1
             assert soft_token_embedding.size(2) == self.d_h
 
@@ -269,7 +271,7 @@ class Generator(nn.Module):
             # Update the causal mask
             decoder_mask = causal_mask(x.size(1)).to(self.device)
 
-        token_distributions = torch.cat(token_distributions, dim=1) # (N, seq_len, vocab_size)
+        token_distributions = torch.cat(token_distributions, dim=1) # (4, seq_len, vocab_size)
 
         assert token_distributions.size(1) == self.seq_len
 
