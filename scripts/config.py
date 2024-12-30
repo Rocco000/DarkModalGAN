@@ -30,6 +30,12 @@ class Config:
             raise FileNotFoundError(f"{dataset_path} doesn't exist")
         
         return dataset_path
+    
+    def get_vocab_path(self) -> Path:
+        return Path(self.config["vocab_path"])
+    
+    def get_vocab_threshold(self) -> int:
+        return self.config["vocab_threshold"]
 
     def get_batch_size(self) -> int:
         return self.config["batch_size"]
