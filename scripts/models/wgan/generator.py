@@ -21,7 +21,7 @@ class Generator(nn.Module):
 
     def __init__(self, device, num_classes:int, z_dim:int, img_channels:int, img_size:int, feature_map:int, tabular_dim:list, vocab_size:int, seq_len:int, cls_tensor:torch.Tensor, d_h:int=512, n_decoder_block:int=6, n_head:int=8, decoder_dropout:float=0.1, d_ff:int=2048, label_embedding_size:int=128):
         """
-        :param device: device on which move the calculation. ??
+        :param device: device on which move the calculation.
         :param num_classes: the number of classes in the dataset.
         :param z_dim: dimension of noisy z vector.
         :param img_channels: number of channels of input images.
@@ -225,7 +225,7 @@ class Generator(nn.Module):
         x = x.unsqueeze(1) # (N, d_h) --> (N, 1, d_h)
 
         # 3) Add the CLS token
-        cls_embedding = self.token_embedding_layer(self.csl_tensor) # (N, 1) --> (N, 1, d_h)
+        cls_embedding = self.token_embedding_layer(self.csl_tensor.expand(x.size(0), -1)) # (N, 1) --> (N, 1, d_h)
 
         x = torch.cat([x, cls_embedding], dim=1) # (N, 2, d_h)
 

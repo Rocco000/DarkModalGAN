@@ -237,7 +237,7 @@ class Critic(nn.Module):
             [torch.ones((mask.size(0), 1, 1, 1), device=mask.device, dtype=mask.dtype), mask], dim=3
         )
 
-        assert extended_mask.size(2) == 513
+        assert extended_mask.size(3) == 513
 
         return self.encoder_only(x, extended_mask) # (N, seq_len, d_h)
     
