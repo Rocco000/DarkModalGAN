@@ -147,6 +147,9 @@ class Config:
         """
         return Path(self.config["checkpoint_path"])
 
+    def get_gen_weights_folder(self) -> Path:
+        return Path(self.config["gen_path"])
+
     def get_gen_weights(self, epoch:int) -> Path:
         """
         Returns the file path to the generator weigths for given epoch.
@@ -159,6 +162,9 @@ class Config:
         if not gen_weights_path.exists():
             raise FileNotFoundError(f"{gen_weights_path} doesn't exist")
         return gen_weights_path
+    
+    def get_critic_weights_folder(self) -> Path:
+        return Path(self.config["critic_path"])
 
     def get_critic_weights(self, epoch:int) -> Path:
         """
@@ -173,6 +179,9 @@ class Config:
             raise FileNotFoundError(f"{critic_weights_path} doesn't exist")
         return critic_weights_path
 
+    def get_gen_opt_folder(self) -> Path:
+        return Path(self.config["gen_opt_path"])
+
     def get_gen_opt_state(self, epoch:int) -> Path:
         """
         Returns the file path to the generator optimizer state for given epoch.
@@ -185,6 +194,9 @@ class Config:
         if not gen_opt_path.exists():
             raise FileNotFoundError(f"{gen_opt_path} doesn't exist")
         return gen_opt_path
+    
+    def get_critic_opt_folder(self) -> Path:
+        return Path(self.config["critic_opt_path"])
 
     def get_critic_opt_state(self, epoch:int) -> Path:
         """
