@@ -1,25 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-import sys
-import os
-
-# Add parent_directory to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Local import
-from transformer_architecture import InputEmbedding, PositionalEncoding
-from transformer_architecture import FeedForwardBlock, MultiHeadAttentionBlock, GANDecoderBlock, ProjectionLayer
-from transformer_architecture import Decoder, DecoderOnly
-from transformer_architecture import causal_mask
 
 class Generator(nn.Module):
     """
     This class represent the Generator in the WGAN.
     """
 
-    def __init__(self, device, num_classes:int, z_dim:int, img_channels:int, img_size:int, feature_map:int, tabular_dim:list, vocab_size:int, seq_len:int, cls_tensor:torch.Tensor, d_h:int=512, n_decoder_block:int=6, n_head:int=8, decoder_dropout:float=0.1, d_ff:int=2048, label_embedding_size:int=128):
+    def __init__(self, device, num_classes:int, z_dim:int, img_channels:int, img_size:int, feature_map:int, tabular_dim:list, label_embedding_size:int=128):
         """
         :param device: device on which move the calculation.
         :param num_classes: the number of classes in the dataset.
@@ -28,23 +16,12 @@ class Generator(nn.Module):
         :param img_size: the image size.
         :param feature_map: number of feature map in Convolutional layer.
         :param tabular_dim: a list containing the dimension of categorical features.
-        :param vocab_size: the vocabulary size.
-        :param seq_len: maximum sequence length, namely the maximum token length.
-        :param cls_tensor: a torch.Tensor containing the cls token-id.
-        :param d_h: embedding size.
-        :param n_decoder_block: number of decoder block.
-        :param n_head: number of head.
-        :param decoder_dropout: the dropout value for decoder.
-        :param d_ff: output dimension of the first nn.Linear layer in FeedForward block.
         :param label_embedding_size: the label embedding size.
         """
         super(Generator, self).__init__()
 
         self.device = device
         self.img_size = img_size
-        self.seq_len = seq_len
-        self.d_h = d_h
-        self.csl_tensor = cls_tensor
 
         # Label embedding layer
         self.label_embedding_layer = nn.Embedding(num_classes, label_embedding_size) # to add the sample class to the noisy z vector
@@ -82,12 +59,6 @@ class Generator(nn.Module):
             nn.Tanh() # To normalize image in range [-1, 1] to have a more stable training
         )
 
-        # TEXT GENERATION LAYERS
-        self.text_projection = nn.Linear(1024, d_h)
-        self.token_embedding_layer = InputEmbedding(d_h, vocab_size)
-        # +2 to add the label embedding and CLS embedding at the beginning of the sentece
-        self.decoder_only = self.text_block(vocab_size, seq_len+2, d_h, n_decoder_block, n_head, decoder_dropout, d_ff) 
-
     def tabular_block(self, input_dim:int, intermediate_dim:int) -> nn.Sequential:
         """
         Define a nn.Sequential block for tabular modality.
@@ -118,52 +89,6 @@ class Generator(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU()
         )
-
-    def text_block(self, vocab_size:int, seq_len:int, d_h:int, n_decoder_block:int, n_head:int, dropout:float, d_ff:int) -> DecoderOnly:
-        """
-        Define a Decoder-Only architecture.
-
-        :param vocab_size: the vocabulary size.
-        :param seq_len: the maximum sequence length, namely the maximum token length.
-        :param d_h: the embedding size.
-        :param n_decoder_block: number of decoder block.
-        :param n_head: number of head.
-        :param dropout: the dropout value.
-        :param d_ff: output dimension of the first nn.Linear layer in FeedForward block.
-        :return: a DecoderOnly model.
-        """
-        # Create the positional encoding layer
-        positional_layer = PositionalEncoding(d_h, seq_len, dropout)
-
-        # Crete decoder blocks
-        decoder_blocks = list()
-        for _ in range(n_decoder_block):
-            # Crete the Multi-Head Attention (Self-Attention) layer
-            decoder_self_attention_block = MultiHeadAttentionBlock(d_h, n_head, dropout)
-            
-            # Crete the FeedForward layer
-            feed_forward_block = FeedForwardBlock(d_h, d_ff, dropout)
-
-            # Crete the i-th decoder block
-            decoder_block = GANDecoderBlock(d_h, decoder_self_attention_block, feed_forward_block, dropout)
-
-            decoder_blocks.append(decoder_block)
-
-        # Create decoder
-        decoder = Decoder(d_h, nn.ModuleList(decoder_blocks))
-
-        # Create the projection layer
-        projection_layer = ProjectionLayer(d_h, vocab_size)
-
-        # Create Decoder-only architecture
-        decoder_only = DecoderOnly(decoder, positional_layer, projection_layer)
-
-        # Initialize the parameters with Xavier technique
-        for p in decoder_only.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-        return decoder_only
 
     def tabular_forward(self, latent_vector, tau):
         """
@@ -209,73 +134,6 @@ class Generator(nn.Module):
 
         # Reshape the output image: (N, 3, 256, 256) --> (N, 3, self.img_size, self.img_size)
         return F.interpolate(x, size=(self.img_size, self.img_size), mode='bilinear', align_corners=False) 
-    
-    def txt_forward(self, latent_vector, tau):
-        """
-        Generate text.
-
-        :param latent_vector: the latent vector obtained from self.shared_latent_layer
-        :param tau: tau is the temperature parameter in Gumbel-Softmax function.
-        :return: a sequence of soft-embeddings and Gumbel-Softmax distribution.
-        """
-        # 1) Projecting latent vector in d_h dimension
-        x = self.text_projection(latent_vector) # (N, 1024) --> (N, d_h)
-
-        # 2) Add the sequence dimension
-        x = x.unsqueeze(1) # (N, d_h) --> (N, 1, d_h)
-
-        # 3) Add the CLS token
-        cls_embedding = self.token_embedding_layer(self.csl_tensor.expand(x.size(0), -1)) # (N, 1) --> (N, 1, d_h)
-
-        x = torch.cat([x, cls_embedding], dim=1) # (N, 2, d_h)
-
-        # 4) Define the causal mask
-        decoder_mask = causal_mask(x.size(1)).to(self.device)
-
-        # List to store the token distribution
-        token_distributions = list()
-
-        for _ in range(self.seq_len):
-            # 1) Get decoder output (hidden state)
-            decoder_output = self.decoder_only.generate_text(x, decoder_mask) # (N, seq_len, d_h)
-
-            # 2) Get the last predicted token
-            last_hidden_state = decoder_output[:, -1, :]   # (N, d_h)
-            last_hidden_state = last_hidden_state.unsqueeze(1) # (N, 1, d_h)
-
-            # 3) Project hidden state in the vocabulary space
-            last_step_logits = self.decoder_only.project(last_hidden_state) # (N, 1, vocab_size)
-
-            # 4) Apply Gumbel-Softmax
-            soft_token_dist = F.gumbel_softmax(last_step_logits, tau=tau, hard=False)  # (N, 1, vocab_size)
-
-            token_distributions.append(soft_token_dist[:4, :, :]) # (4, 1, vocab_size)
-
-            # 5) Convert the soft distribution to an embedding
-            token_embedding_matrix = self.token_embedding_layer.embedding.weight  # (vocab_size, d_h)
-
-            # Weighted sum: (N, vocab_size) x (vocab_size, d_h) -> (N, d_h)
-            soft_token_dist = soft_token_dist.squeeze(1) # (N, 1, vocab_size) --> (N, vocab_size)
-            soft_token_embedding = soft_token_dist @ token_embedding_matrix
-            soft_token_embedding = soft_token_embedding * math.sqrt(self.d_h) 
-            soft_token_embedding = soft_token_embedding.unsqueeze(1)  # (N, 1, d_h)
-
-            del soft_token_dist, last_step_logits
-
-            assert soft_token_embedding.size(1) == 1
-            assert soft_token_embedding.size(2) == self.d_h
-
-            # 6) Add new token to the sequence
-            x = torch.cat([x, soft_token_embedding], dim=1) # Increases sequence length by 1
-
-            # Update the causal mask
-            decoder_mask = causal_mask(x.size(1)).to(self.device)
-
-        token_distributions = torch.cat(token_distributions, dim=1) # (4, seq_len, vocab_size)
-
-        assert token_distributions.size(1) == self.seq_len
-
-        return x[:, 2:, :], token_distributions
 
     def forward(self, z_vector, labels, tau):
         """
@@ -300,10 +158,7 @@ class Generator(nn.Module):
         # IMAGE GENERATION
         img_output = self.img_forward(latent_vector) # (N, 3, self.img_size, self.img_size)
 
-        # TEXT GENERATION
-        text_output, token_distributions = self.txt_forward(latent_vector, tau) # (N, seq_len, d_h)
-
-        return img_output, text_output, token_distributions, origin, destination, micro_category, price, crypto_price
+        return img_output, origin, destination, micro_category, price, crypto_price
 
 import matplotlib.pyplot as plt
 def test():
@@ -314,18 +169,18 @@ def test():
 
     tau = 1.0
 
-    gen = Generator(device, num_classes=7, z_dim=128, img_channels=3, img_size=224, feature_map=8, tabular_dim=[31, 18, 19], vocab_size=30581, seq_len=510, d_h=512).to(device)
+    gen = Generator(device, num_classes=7, z_dim=128, img_channels=3, img_size=224, feature_map=8, tabular_dim=[31, 18, 19]).to(device) #vocab_size=30581, seq_len=510, d_h=512
     gen.eval()
 
     
-    img_output, text_output, origin, destination, micro_category, price, crypto_price = gen(noise, label, tau)
+    img_output, origin, destination, micro_category, price, crypto_price = gen(noise, label, tau)
 
     assert img_output.size(1) == 3
     assert img_output.size(2) == 224
     assert img_output.size(3) == 224
 
-    assert text_output.size(1) == 510
-    assert text_output.size(2) == 512
+    #assert text_output.size(1) == 510
+    #assert text_output.size(2) == 512
     
     assert origin.size(1) == 31
     assert destination.size(1) == 18
@@ -344,7 +199,7 @@ def test():
     plt.axis('off')  # Turn off axis
     plt.show()
 
-    print(f"Text:\n{text_output}")
+    #print(f"Text:\n{text_output}")
 
     print(f"Tabular origin:\n{origin}")
     print(f"Tabular destination:\n{destination}")

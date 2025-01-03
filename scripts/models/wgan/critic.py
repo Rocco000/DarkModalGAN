@@ -1,40 +1,23 @@
 import torch
 import torch.nn as nn
-import sys
-import os
-
-# Add parent_directory to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Local import
-from transformer_architecture import InputEmbedding, PositionalEncoding
-from transformer_architecture import FeedForwardBlock, MultiHeadAttentionBlock, EncoderBlock
-from transformer_architecture import Encoder, EncoderOnly
 
 class Critic(nn.Module):
     """
     This class represent the Critic in the WGAN.
     """
 
-    def __init__(self, num_classes:int, tabular_dim:int, in_channels:int, img_size:int, feature_map:int, vocab_size:int, seq_len:int, d_h:int=512, n_encoder_block:int=6, n_head:int=8, encoder_dropout:float=0.1, d_ff:int=2048, label_embedding_size:int=128):
+    def __init__(self, num_classes:int, tabular_dim:int, in_channels:int, img_size:int, feature_map:int, label_embedding_size:int=128):
         """
         :param num_classes: the number of classes in the dataset.
         :param tabular_dim: dimension of the tabular data.
         :param in_channels: number of channels of the input images.
         :param img_size: the image size.
         :param feature_map: number of feature map in Convolutional layer.
-        :param vocab_size: the vocabulary size.
-        :param d_h: the embedding size.
-        :param n_encoder_block: number of encoder block.
-        :param n_head: number of head.
-        :param encoder_dropout: the dropout value for encoder.
-        :param d_ff: output dimension of the first nn.Linear layer in FeedForward block.
         :param label_embedding_size: label embedding size. 
         """
         super(Critic, self).__init__()
 
         self.img_size = img_size
-        self.d_h = d_h
 
         # Embedding layer for labels.
         self.label_embedding_layer = nn.Embedding(num_classes, label_embedding_size)
@@ -58,21 +41,17 @@ class Critic(nn.Module):
         self.last_img_layer = nn.Conv2d(in_channels=feature_map*32, out_channels=1, kernel_size=4, stride=2, padding=0)
         self.flatter = nn.Flatten() # To flat the output of Conv2d layer
 
-        # TEXT DATA
-        self.token_embedding_layer = InputEmbedding(d_h, vocab_size)
-        self.encoder_only = self.text_block(seq_len + 1, d_h, n_encoder_block, n_head, encoder_dropout, d_ff) # +1 for label embedding
-
         # FUSION BLOCK
-        # Input: 512 + d_h + C * H * W
+        # Input: 512 + C * H * W
         self.fusion_layers = nn.Sequential(
-            self.fusion_block(512+d_h+4, 512),
+            self.fusion_block(512+4, 768),
+            self.fusion_block(768, 512),
             self.fusion_block(512, 256),
             self.fusion_block(256, 128),
             nn.Linear(128, 1)
         )
 
         # PROJECTION LAYERS
-        self.text_project = nn.Linear(label_embedding_size, d_h)
         self.img_project = nn.Linear(label_embedding_size, img_size*img_size)
 
     def tabular_block(self, input_dim:int, intermediate_dim:int) -> nn.Sequential:
@@ -105,45 +84,6 @@ class Critic(nn.Module):
             nn.InstanceNorm2d(out_channels, affine=True), # affine= True to have learnable parameters
             nn.LeakyReLU(0.2)
         )
-    
-    def text_block(self, seq_len:int, d_h:int, n_encoder_block:int, n_head:int, dropout:float, d_ff:int) -> EncoderOnly:
-        """
-        Define a Encoder-Only architecture.
-
-        :param seq_len: the maximum sequence length, namely the maximum token length.
-        :param d_h: the embedding size.
-        :param n_encoder_block: number of encoder block.
-        :param n_head: number of head.
-        :param dropout: the dropout value.
-        :param d_ff: output dimension of the first nn.Linear layer in FeedForward block.
-        :return: a EncoderOnly model.
-        """
-        positional_layer = PositionalEncoding(d_h, seq_len, dropout)
-
-        encoder_blocks = list()
-        for _ in range(n_encoder_block):
-            # Crete the Multi-Head Attention (Self-Attention) layer
-            encoder_self_attention_block = MultiHeadAttentionBlock(d_h, n_head, dropout)
-
-            # Crete the FeedForward layer
-            feed_forward_block = FeedForwardBlock(d_h, d_ff, dropout)
-
-            # Crete the i-th encoder block
-            encoder_block = EncoderBlock(d_h, encoder_self_attention_block, feed_forward_block, dropout)
-
-            encoder_blocks.append(encoder_block)
-
-        # Create decoder
-        encoder = Encoder(d_h, nn.ModuleList(encoder_blocks))
-
-        encoder_only = EncoderOnly(encoder, positional_layer)
-
-        # Initialize the parameters with Xavier technique
-        for p in encoder_only.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-        
-        return encoder_only
     
     def fusion_block(self, input_dim:int, intermediate_dim:int) -> nn.Sequential:
         """
@@ -201,45 +141,6 @@ class Critic(nn.Module):
         x = self.img_layer4(x)
         x = self.img_layer5(x)
         return self.last_img_layer(x) # (N, 1, 2, 2)
-
-    def txt_forward(self, x, mask, label_embedding):
-        """
-        Process tabular data.
-
-        :param x: a sequence of text embedding.
-        :param mask: a mask to hide paddding tokens.
-        :param label_embedding: the label embedding.
-        :return: hidden state of the encoder.
-        """
-        # Create token embedding
-        # x = self.token_embedding_layer(x) # (N, seq_len) --> (N, seq_len, d_h)
-
-        # assert x.size(1) == 512
-        # assert x.size(2) == 512
-
-        # Project label embedding in text embedding space
-        txt_label_embedding = self.text_project(label_embedding) # (N, label_embedding_size) --> (N, d_h)
-
-        assert txt_label_embedding.size(1) == self.d_h
-
-        # Add the sequence dimension
-        txt_label_embedding = txt_label_embedding.unsqueeze(1) # (N, d_h) --> (N, 1, d_h)
-
-        assert txt_label_embedding.size(1) == 1
-
-        # Add the label embedding at the beginning of the text
-        x = torch.cat([txt_label_embedding, x], dim=1) # (N, seq_len+1, d_h)
-
-        assert x.size(1) == 513
-
-        # Extend the mask due to the label embedding
-        extended_mask = torch.cat(
-            [torch.ones((mask.size(0), 1, 1, 1), device=mask.device, dtype=mask.dtype), mask], dim=3
-        )
-
-        assert extended_mask.size(3) == 513
-
-        return self.encoder_only(x, extended_mask) # (N, seq_len, d_h)
     
     def fusion_forward(self, x):
         """
@@ -249,23 +150,12 @@ class Critic(nn.Module):
         :return: model prediction.
         """
         return self.fusion_layers(x)
-    
-    def get_text_embedding(self, token_sequence:torch.Tensor) -> torch.Tensor:
-        """
-        Convert the input sequence of token-IDs in a sequence of embeddings.
 
-        :param token_sequence: a sequence of token-IDs
-        :return: a tensor containing the sequence of embeddings.
-        """
-        return self.token_embedding_layer(token_sequence) # (N, seq_len) --> (N, seq_len, d_h)
-
-    def forward(self, images, text, mask, tabular, labels):
+    def forward(self, images, tabular, labels):
         """
         Predict whether the input is fake or real for that label.
 
         :param images: a batch of images.
-        :param text: a batch of text embedding.
-        :param mask: a mask to hide padding tokens.
         :param tabular: a batch of tabular data.
         :param labels: a batch of corresponding labels.
         :return: the model prediction.
@@ -286,18 +176,10 @@ class Critic(nn.Module):
 
         assert img_output.size(1) == 4
 
-        # TEXT PROCESSING --> Input: (N, seq_len) + (N, label_embedding_size)
-        text_output = self.txt_forward(text, mask, label_embedding) # (N, seq_len, d_h)
-
-        # Get the corresponding CLS embedding which represents the entire input
-        cls_embedding = text_output[:, 1, :]  # (N, d_h)
-
-        assert cls_embedding.size(1) == self.d_h
-
         # CLASSIFICATION
-        feature_vector = torch.cat([img_output, cls_embedding, tabular_output], dim=1)
+        feature_vector = torch.cat([img_output, tabular_output], dim=1)
 
-        assert feature_vector.size(1) == 512+self.d_h+4
+        assert feature_vector.size(1) == 512+4
 
         return self.fusion_forward(feature_vector)
 
@@ -438,7 +320,7 @@ def test():
     img = transformer(Image.open(img_path)).unsqueeze(0).to(device) # (1, 3, 224, 224)
 
     # Read Text
-    tokenizer = initialize_bert_tokenizer()
+    """tokenizer = initialize_bert_tokenizer()
 
     pad_token = torch.tensor([tokenizer.convert_tokens_to_ids("[PAD]")], dtype=torch.int64).to(device)
 
@@ -449,15 +331,15 @@ def test():
     mask = (text != pad_token).unsqueeze(0).int().to(device) # (1, 1, seq_len)
 
     print(f"mask shape: {mask.shape}")
-    print(mask)
+    print(mask)"""
 
     label = torch.tensor(4, dtype=torch.int64).unsqueeze(0).to(device) # (1, 1)
 
-    disc = Critic(num_classes=7, tabular_dim=70, in_channels=3, img_size=224, feature_map=8, vocab_size=len(tokenizer), seq_len=512+1).to(device)
+    disc = Critic(num_classes=7, tabular_dim=70, in_channels=3, img_size=224, feature_map=8).to(device) # vocab_size=len(tokenizer), seq_len=512+1
     disc.eval()
 
-    text_embedding = disc.get_text_embedding(text) # (1, seq_len) --> (1, seq_len, d_h)
-    output = disc(img, text_embedding, mask, tabular_data, label)
+    #text_embedding = disc.get_text_embedding(text) # (1, seq_len) --> (1, seq_len, d_h)
+    output = disc(img, tabular_data, label)
 
     assert output.size(1) == 1
 

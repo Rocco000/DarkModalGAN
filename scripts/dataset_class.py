@@ -12,21 +12,14 @@ class MultimodalDataset(Dataset):
     This class represents my multimodal dataset.
     """
 
-    def __init__(self, ds:pd.DataFrame, tokenizer:BertTokenizer, seq_len:int, img_folder:Path):
+    def __init__(self, ds:pd.DataFrame, img_folder:Path):
         """
         :param ds: a DataFrame instance.
-        :param tokenizer: a BertTokenizer instance to encode text.
-        :param seq_len: the maximum token length.
         :param img_folder: a path to image folder.
         """
         super(MultimodalDataset, self).__init__()
 
         self.ds = ds
-        self.tokenizer = tokenizer
-        self.seq_len = seq_len
-        self.pad_token = torch.tensor([self.tokenizer.convert_tokens_to_ids("[PAD]")], dtype=torch.int64) # Store PAD token id
-        self.cls_token = torch.tensor([self.tokenizer.convert_tokens_to_ids("[CLS]")], dtype=torch.int64)
-        self.sep_token = torch.tensor([self.tokenizer.convert_tokens_to_ids("[SEP]")], dtype=torch.int64)
 
         if not img_folder.exists() or not img_folder.is_dir():
             raise FileNotFoundError(f"{img_folder} doesn't exist or it is not a folder")
@@ -41,15 +34,6 @@ class MultimodalDataset(Dataset):
 
     def __len__(self):
         return self.ds.shape[0]
-    
-    def get_pad_token(self) -> torch.Tensor:
-        return self.pad_token
-    
-    def get_cls_token(self) -> torch.Tensor:
-        return self.cls_token
-    
-    def get_sep_token(self) -> torch.Tensor:
-        return self.sep_token
 
     def __getitem__(self, index):
         sample = self.ds.iloc[index]
@@ -96,19 +80,8 @@ class MultimodalDataset(Dataset):
         
         image = self.transform(img)
 
-        # Get TEXT
-        # Tokenize text, optionally add padding and truncate too long text
-        text = self.tokenizer.encode(sample["full_text"], padding="max_length", max_length=self.seq_len, truncation=True)
-
-        text = torch.tensor(text, dtype=torch.int64)
-
-        assert text.size(0) == self.seq_len # Check the size of the text tensors is equal to self.seq_len
-
         return {
             "image": image,
-            "full_text": text,
-            # unsqueeze to add batch and sequence dimension
-            "mask": (text != self.pad_token).unsqueeze(0).unsqueeze(0).int(), # (1, 1, self.seq_len)
             "tabular": tabular_data,
             "label": label
         }
@@ -253,5 +226,5 @@ if __name__ == "__main__":
     sample_dict = dataset.__getitem__(3)
 
     assert sample_dict["tabular"].size(0) == 70
-    assert sample_dict["full_text"].size(0) == 512
-    print(sample_dict["mask"].shape)
+    #assert sample_dict["full_text"].size(0) == 512
+    #print(sample_dict["mask"].shape)

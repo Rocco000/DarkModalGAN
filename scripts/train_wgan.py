@@ -212,14 +212,12 @@ def log_metrics(
   config:Config,
   real_data:torch.Tensor,
   fake_img:torch.Tensor,
-  fake_token_distribution:torch.Tensor,
   fake_origin:torch.Tensor,
   fake_destination:torch.Tensor,
   fake_micro_category:torch.Tensor,
   fake_price:torch.Tensor,
   fake_crypto_price:torch.Tensor,
   step:int,
-  tokenizer:BertTokenizer,
   writer_real:SummaryWriter,
   writer_fake:SummaryWriter
 ) -> None:
@@ -229,20 +227,17 @@ def log_metrics(
     :param config: a Config instance.
     :param real_data: a batch of real data.
     :param fake_img: a batch of generated images.
-    :param fake_token_distribution: a batch of probability distribution over vocabulary.
     :param fake_origin: a batch of generated origin.
     :param fake_destination: a batch of generated destination.
     :param fake_micro_category: a batch of generated micro-category.
     :param fake_price: a batch of generated price.
     :param fake_crypto_price: a batch of generated crypto price.
     :param step: the step value.
-    :parama tokenizer: a BertTokenizer instance.
     :param writer_real: a SummaryWriter to log metrics for real data.
     :param writer_fake: a SummaryWriter to log metrics for generated data.
     """
     with torch.no_grad():
         fake_img = fake_img.cpu() # (N, 3, 224, 224)
-        fake_token_distribution = fake_token_distribution.cpu() # (N, seq_len, vocab_size)
         fake_origin = fake_origin.cpu() # (N, 31)
         fake_destination = fake_destination.cpu() # (N, 18)
         fake_micro_category = fake_micro_category.cpu() #(N, 19)
@@ -260,9 +255,6 @@ def log_metrics(
         # Log IMG metrics
         log_img_metrics(real_data["image"], fake_img, writer_real, writer_fake, step)
 
-        # Log TEXT metrics
-        log_txt_metrics(real_data["full_text"][:4, :], fake_token_distribution, tokenizer, writer_real, writer_fake, step)
-
 def run_train(
   config:Config,
   train_data:DataLoader,
@@ -271,10 +263,6 @@ def run_train(
   start_step:int,
   z_dim:int,
   lambda_value:int,
-  tokenizer:BertTokenizer,
-  cls_tensor:torch.Tensor,
-  sep_tensor:torch.Tensor,
-  pad_tensor:torch.Tensor,
   generator:Generator,
   critic:Critic,
   critic_iteration:int,
@@ -295,9 +283,6 @@ def run_train(
     :param start_step: the step check-point.
     :param z_dim: the dimension of noisy z vector.
     :param lambda_value: lambda value for gradient penalty.
-    :param tokenizer: a BertTokenizer instance.
-    :param cls_tensor: a tensor representing the CLS token-ID.
-    :param sep_tensor: a tensor representing the SEP token-ID.
     :param generator: a Generator instance.
     :param critic: a Critic instance.
     :param critic_iteration: the number of iteration to train the discriminator.
@@ -313,6 +298,8 @@ def run_train(
     # Set models in train mode
     generator.train()
     critic.train()
+
+    log_points = [20, 40, 61]
 
     mlflow.set_experiment("Training_conditional_WGAN")
     with mlflow.start_run() as run:
@@ -331,46 +318,17 @@ def run_train(
                     noise = torch.randn(cur_batch_size, z_dim).to(device)
 
                     # GENERATE FAKE DATA
-                    fake_img, fake_soft_embedding, x, fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price = generator(noise, batch_on_device["label"], tau)
-
-                    del x
+                    fake_img, fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price = generator(noise, batch_on_device["label"], tau)
 
                     # 1) Concatenate tabular data
                     fake_tabular = torch.cat([fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price], dim=1) # (N, tabular_dim)
                     del fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price
 
-                    # 2.1) Add CLS and SEP tokens to the generated token-IDs. (N, 510, d_h) --> (N, 512, d_h)
-                    cls_embedding = critic.get_text_embedding(cls_tensor.expand(cur_batch_size, -1))
-                    sep_embedding = critic.get_text_embedding(sep_tensor.expand(cur_batch_size, -1))
-                    pad_embedding = critic.get_text_embedding(pad_tensor.expand(cur_batch_size, -1))
-
-                    fake_soft_embedding = torch.cat(
-                        [cls_embedding, fake_soft_embedding, sep_embedding],
-                        dim=1
-                    )
-
-                    # 2.2) Define a MASK for the generated sequence
-                    generated_seq_len = fake_soft_embedding.size(1)
-                    fake_mask = torch.ones(cur_batch_size, 1, 1, generated_seq_len, dtype=torch.bool, device=device) # (N, 1, 1, seq_len)
-
-                    # 2.3) Add PAD tokens
-                    padding_length = 512 - fake_soft_embedding.size(1)
-                    pad_embedding = pad_embedding.repeat(1, padding_length, 1)
-
-                    fake_soft_embedding = torch.cat([fake_soft_embedding, pad_embedding], dim=1)
-
-                    # 2.4) Update mask to hide padding
-                    padding_mask = torch.zeros(cur_batch_size, 1, 1, padding_length, dtype=torch.bool, device=device)
-                    fake_mask = torch.cat([fake_mask, padding_mask], dim=-1)
-
-                    # 3) Transform the sequence of real token-IDs in a sequence of text embedding
-                    real_embedding = critic.get_text_embedding(batch_on_device["full_text"]) # (N, seq_len) --> (N, seq_len, d_h)
-
-                    critic_real = critic(batch_on_device["image"], real_embedding, batch_on_device["mask"], batch_on_device["tabular"], batch_on_device["label"])
-                    critic_fake = critic(fake_img, fake_soft_embedding, fake_mask, fake_tabular, batch_on_device["label"])
+                    critic_real = critic(batch_on_device["image"], batch_on_device["tabular"], batch_on_device["label"])
+                    critic_fake = critic(fake_img, fake_tabular, batch_on_device["label"])
 
                     # Calculate the gradient penalty
-                    gp = gradient_penalty(critic, batch_on_device, fake_img, fake_soft_embedding, fake_mask, fake_tabular, batch_on_device["label"], device)
+                    gp = gradient_penalty(critic, batch_on_device, fake_img, fake_tabular, batch_on_device["label"], device)
 
                     # Since the critic tries to maximize but the optimization algorithm is design to minimize, apply - at the beginning of the formula
                     critic_loss = (-(torch.mean(critic_real) - torch.mean(critic_fake))) + lambda_value * gp
@@ -378,39 +336,18 @@ def run_train(
                     critic.zero_grad()
                     critic_loss.backward()
                     critic_opt.step()
-                    print("Finita un'iterazione del for per critic")
 
                 # TRAIN GENERATOR --> max E[D(G(x))] --> min - E[D(G(x))]
                 # Re-run the generator
                 noise = torch.randn(cur_batch_size, z_dim).to(device) # (N, z_dim)
-                fake_img, fake_soft_embedding, token_distribution, fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price = generator(noise, batch_on_device["label"], tau)
+                fake_img, fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price = generator(noise, batch_on_device["label"], tau)
 
                 fake_tabular = torch.cat([fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price], dim=1) # (N, tabular_dim)
 
-                if batch_idx % 163 != 0 and batch_idx > 0:
-                    del token_distribution, fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price
+                if batch_idx not in log_points:
+                    del fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price
 
-                # Add CLS and SEP tokens (N, 510, d_h) --> (N, 512, d_h)
-                cls_embedding = critic.get_text_embedding(cls_tensor.expand(cur_batch_size, -1))
-                sep_embedding = critic.get_text_embedding(sep_tensor.expand(cur_batch_size, -1))
-                pad_embedding = critic.get_text_embedding(pad_tensor.expand(cur_batch_size, -1))
-                fake_soft_embedding = torch.cat(
-                    [cls_embedding, fake_soft_embedding, sep_embedding],
-                    dim=1
-                )
-
-                generated_seq_len = fake_soft_embedding.size(1)
-                fake_mask = torch.ones(cur_batch_size, 1, 1, generated_seq_len, dtype=torch.bool, device=device) # (N, 1, 1, seq_len)
-
-                # Add PAD tokens
-                padding_length = 512 - fake_soft_embedding.size(1)
-                pad_embedding = pad_embedding.repeat(1, padding_length, 1)
-                fake_soft_embedding = torch.cat([fake_soft_embedding, pad_embedding], dim=1)
-
-                padding_mask = torch.zeros(cur_batch_size, 1, 1, padding_length, dtype=torch.bool, device=device)
-                fake_mask = torch.cat([fake_mask, padding_mask], dim=-1)
-
-                output = critic(fake_img, fake_soft_embedding, fake_mask, fake_tabular, batch_on_device["label"])
+                output = critic(fake_img, fake_tabular, batch_on_device["label"])
 
                 gen_loss = -torch.mean(output)
                 generator.zero_grad()
@@ -418,9 +355,9 @@ def run_train(
                 gen_opt.step()
 
                 # VALIDATION
-                if batch_idx % 163 == 0 and batch_idx > 0:
+                if batch_idx in log_points:
                     writer_fake.add_scalar("Critic/Gradient_Penalty", gp.item(), global_step=tensorboard_step)
-                    log_metrics(config, batch, fake_img, token_distribution, fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price, tensorboard_step, tokenizer, writer_real, writer_fake)
+                    log_metrics(config, batch, fake_img, fake_origin, fake_destination, fake_micro_category, fake_price, fake_crypto_price, tensorboard_step, writer_real, writer_fake)
 
                     tensorboard_step += 1
 
@@ -468,20 +405,6 @@ if __name__ == "__main__":
     dataset_path = config.get_dataset_path()
     my_json_dataset = pd.read_json(dataset_path, orient="records", lines=True)
 
-    # Get BertTokenizer
-    custom_bert_tokenizer = initialize_bert_tokenizer()
-
-    # Create a new vocabulary using WordPiece pruning if it not exists.
-    pruned_tokenizer = None
-    new_vocab_path = config.get_vocab_path()
-    threshold = config.get_vocab_threshold()
-    if not new_vocab_path.exists():
-        pruned_tokenizer = word_piece_pruning(my_json_dataset, 512, custom_bert_tokenizer, drug_terms, threshold, new_vocab_path)
-        print(f"Vocabulary length before: {len(custom_bert_tokenizer)}")
-        print(f"Vocabulary length after WordPiece pruning: {len(pruned_tokenizer)}")
-    else:
-        pruned_tokenizer = BertTokenizer(new_vocab_path, do_lower_case=True)
-
     # Hyperparameters
     BATCH_SIZE = config.get_batch_size()
     NUM_EPOCH = config.get_num_epoch()
@@ -500,16 +423,14 @@ if __name__ == "__main__":
     writer_fake = SummaryWriter(config.get_writer_path_fake())
 
     # Create dataset class and define a DataLoader
-    my_dataset = MultimodalDataset(ds=my_json_dataset, tokenizer=pruned_tokenizer, seq_len=512, img_folder=img_path)
+    my_dataset = MultimodalDataset(ds=my_json_dataset, img_folder=img_path)
     train_dataloader = DataLoader(my_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
     # Create GENERATOR and CRITIC
-    # seq_len = 510 to not exceed the maximum token length of 512
-    cls_tensor = my_dataset.get_cls_token().to(device) # (1,) --> (N, 1)
-    generator = Generator(device, num_classes=7, z_dim=Z_DIM, img_channels=3, img_size=224, feature_map=8, tabular_dim=[31, 18, 19], vocab_size=len(pruned_tokenizer), seq_len=200, cls_tensor=cls_tensor, d_h=64, d_ff=256, label_embedding_size=LABEL_EMBEDDING_DIM).to(device)
+    generator = Generator(device, num_classes=7, z_dim=Z_DIM, img_channels=3, img_size=224, feature_map=8, tabular_dim=[31, 18, 19], label_embedding_size=LABEL_EMBEDDING_DIM).to(device)
 
     # seq_len = 512
-    critic = Critic(num_classes=7, tabular_dim=70, in_channels=3, img_size=224, feature_map=8, vocab_size=len(pruned_tokenizer), seq_len=512, d_h=64, d_ff=256, label_embedding_size=LABEL_EMBEDDING_DIM).to(device)
+    critic = Critic(num_classes=7, tabular_dim=70, in_channels=3, img_size=224, feature_map=8, label_embedding_size=LABEL_EMBEDDING_DIM).to(device)
 
     # Define the optimizers
     gen_opt = optim.Adam(generator.parameters(), lr=LEARNING_RATE, betas=(0.0, 0.9)) # beta_1 = 0, beta_2 = 0.9 as in paper Improved Training of Wasserstein GANs
@@ -534,11 +455,8 @@ if __name__ == "__main__":
         initialize_weights(critic)
 
 
-    sep_tensor = my_dataset.get_sep_token().to(device)
-    pad_tensor = my_dataset.get_pad_token().to(device)
-
     try:
-        run_train(config, train_dataloader, NUM_EPOCH, epoch, tensorboard_step, Z_DIM, LAMBDA, custom_bert_tokenizer, cls_tensor, sep_tensor, pad_tensor, generator, critic, CRITIC_ITERATIONS, gen_opt, critic_opt, writer_real, writer_fake, config.get_checkpoint_path(), device)
+        run_train(config, train_dataloader, NUM_EPOCH, epoch, tensorboard_step, Z_DIM, LAMBDA, generator, critic, CRITIC_ITERATIONS, gen_opt, critic_opt, writer_real, writer_fake, config.get_checkpoint_path(), device)
     except Exception as e:
         print(f"An error occurred:\n{e}")
         traceback.print_exc()
