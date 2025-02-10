@@ -299,9 +299,10 @@ def run_train(
     generator.train()
     critic.train()
 
-    log_points = [20, 40, 61]
+    log_points = [10, 20, 30]
 
-    mlflow.set_experiment("Training_conditional_WGAN")
+    mlflow.set_experiment("Training_conditionalWGAN_V2")
+
     with mlflow.start_run() as run:
         for epoch in range(start_epoch, num_epoch):
             batch_idx = 0
@@ -413,7 +414,7 @@ if __name__ == "__main__":
     Z_DIM = config.get_z_dim()
     CRITIC_ITERATIONS = config.get_critic_iteration()
     LABEL_EMBEDDING_DIM = config.get_label_embeddig_size()
-    print(f"CONFIGURATION: Batch = {BATCH_SIZE}; Epoch = {NUM_EPOCH}")
+    print(f"CONFIGURATION: Batch = {BATCH_SIZE}; Epoch = {NUM_EPOCH}; Lambda= {LAMBDA}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
@@ -444,6 +445,8 @@ if __name__ == "__main__":
 
     if checkpoint_flag:
         exp_id, epoch, tensorboard_step, gen_weights, critic_weights, gen_opt_state, critic_opt_state = load_checkpoint(config)
+
+        epoch += 1
 
         generator.load_state_dict(torch.load(gen_weights))
         critic.load_state_dict(torch.load(critic_weights))
