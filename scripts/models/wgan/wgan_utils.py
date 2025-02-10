@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 # Local import
-from wgan import Critic
+from .critic import Critic
 
 def initialize_weights(model:nn.Module):
     """

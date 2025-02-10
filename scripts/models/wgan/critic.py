@@ -64,7 +64,7 @@ class Critic(nn.Module):
         """
         return nn.Sequential(
             nn.Linear(input_dim, intermediate_dim),
-            nn.BatchNorm1d(intermediate_dim),
+            nn.LayerNorm(intermediate_dim),
             nn.LeakyReLU(0.2)
         )
 
